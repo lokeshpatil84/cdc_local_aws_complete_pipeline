@@ -18,12 +18,12 @@ terraform {
   backend "s3" {
     # These values are OVERRIDDEN by -backend-config flags
     # Default values are only used when no override is provided
-    
-    bucket          = "cdc-pipeline-tfstate-dev"  # Override via -backend-config="bucket=your-bucket"
-    key             = "terraform.tfstate"         # State file path
-    region          = "ap-south-1"               # Override via -backend-config="region=your-region"
-    encrypt         = true                       # Server-side encryption
-    dynamodb_table  = "cdc-pipeline-terraform-lock-dev"  # Override via -backend-config="dynamodb_table=your-table"
+
+    bucket         = "cdc-pipeline-tfstate-dev"        # Override via -backend-config="bucket=your-bucket"
+    key            = "terraform.tfstate"               # State file path
+    region         = "ap-south-1"                      # Override via -backend-config="region=your-region"
+    encrypt        = true                              # Server-side encryption
+    dynamodb_table = "cdc-pipeline-terraform-lock-dev" # Override via -backend-config="dynamodb_table=your-table"
   }
 }
 

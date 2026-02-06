@@ -87,7 +87,7 @@ variable "key_name" {
 variable "public_key" {
   type        = string
   description = "SSH public key for Kafka EC2 instance access"
-  default     = ""  # User must provide this
+  default     = "" # User must provide this
 }
 
 variable "kafka_ebs_volume_size" {
