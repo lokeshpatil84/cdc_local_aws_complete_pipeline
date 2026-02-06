@@ -73,7 +73,7 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   tags                    = var.tags
 
   lifecycle {
-    ignore_changes = [name]
+    ignore_changes        = [name]
     create_before_destroy = true
   }
 }
