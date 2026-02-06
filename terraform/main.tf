@@ -30,6 +30,11 @@ module "vpc" {
   tags               = var.tags
 }
 
+resource "aws_key_pair" "kafka" {
+  key_name   = var.key_name
+  public_key = var.public_key
+}
+
 module "s3" {
   source                    = "./modules/s3"
   project_name              = var.project_name
@@ -61,6 +66,10 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}-${var.environment}-db-credentials"
   description = "Database credentials for CDC pipeline"
   tags        = var.tags
+
+  lifecycle {
+    ignore_changes = [name]
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "db_credentials" {

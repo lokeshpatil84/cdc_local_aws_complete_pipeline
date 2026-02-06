@@ -389,6 +389,7 @@ jobs:
             -out=${PLAN_ID} \
             -var="environment=${ENV}" \
             -var="project_name=${{ env.PROJECT_NAME }}" \
+            -var="public_key=${{ secrets.SSH_PUBLIC_KEY }}" \
             -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} \
             -detailed-exitcode 2>&1 | tee plan_raw.log
 
