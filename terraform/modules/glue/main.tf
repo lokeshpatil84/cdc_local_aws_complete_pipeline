@@ -196,7 +196,5 @@ EOT
 
     working_dir = "${path.module}/../.."
   }
-
-  depends_on = [aws_s3_bucket.data_lake]
 }
 
