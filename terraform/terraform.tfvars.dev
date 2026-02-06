@@ -5,5 +5,5 @@ bucket_prefix = "cdc-pipeline-dev"
 athena_database = "cdc_dev"
 
 # SSH Public Key for Kafka EC2 access
-public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBXM9BoNuFzhvv/rDMZ/q9AtEVwVBPmbqnJdJoar/IOz lokeshpatil8484@gmail.com"
+public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFdS/3Gz2dEuseJSHaWyMFVGcJgqc8Jv8aktZ6RrBAS8 kafka-key for cdc-pipeline"
 

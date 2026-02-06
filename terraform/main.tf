@@ -33,6 +33,10 @@ module "vpc" {
 resource "aws_key_pair" "kafka" {
   key_name   = var.key_name
   public_key = var.public_key
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 module "s3" {
@@ -63,12 +67,14 @@ module "kafka" {
 }
 
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name        = "${var.project_name}-${var.environment}-db-credentials"
-  description = "Database credentials for CDC pipeline"
-  tags        = var.tags
+  name                    = "${var.project_name}-${var.environment}-db-credentials"
+  description             = "Database credentials for CDC pipeline"
+  recovery_window_in_days = 0
+  tags                    = var.tags
 
   lifecycle {
     ignore_changes = [name]
+    create_before_destroy = true
   }
 }
 
