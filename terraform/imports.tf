@@ -7,5 +7,5 @@
 import {
   to = aws_secretsmanager_secret.db_credentials
   # IMPORTANT: The ARN must include the 6-character random suffix (e.g., -xYz123)
-  id = "arn:aws:secretsmanager:ap-south-1:6617-2281-8226:secret:cdc-pipeline-prod-db-credentials"
+  id = "arn:aws:secretsmanager:ap-south-1:661722818226:secret:cdc-pipeline-prod-db-credentials-sXAK91"
 }
