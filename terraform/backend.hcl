@@ -15,3 +15,6 @@ region         = "ap-south-1"
 encrypt        = true
 dynamodb_table = "cdc-pipeline-terraform-lock-dev"
 
+# Note: When using -backend-config=backend.hcl, Terraform expects
+# these attributes directly in the file, NOT inside a config block.
+

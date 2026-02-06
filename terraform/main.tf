@@ -201,10 +201,18 @@ output "kafka_bootstrap_servers_internal" {
 }
 output "kafka_security_group_id" { value = module.kafka.security_group_id }
 output "rds_endpoint" { value = aws_db_instance.postgres.endpoint }
+output "database_endpoint" {
+  value       = aws_db_instance.postgres.endpoint
+  description = "Database endpoint (alias for rds_endpoint)"
+}
 output "debezium_connect_url" {
   value = "http://${module.ecs.alb_dns_name}:8083"
 }
 output "airflow_url" { value = "http://${module.airflow.alb_dns_name}" }
+output "service_url" {
+  value       = "Airflow: http://${module.airflow.alb_dns_name}\nDebezium: http://${module.ecs.alb_dns_name}:8083"
+  description = "Combined service URLs for deployed infrastructure"
+}
 output "glue_role_arn" { value = module.glue.role_arn }
 output "db_secret_arn" { value = aws_secretsmanager_secret.db_credentials.arn }
 output "sns_topic_arn" { value = aws_sns_topic.alerts.arn }
