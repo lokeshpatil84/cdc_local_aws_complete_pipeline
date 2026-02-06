@@ -1,0 +1,6 @@
+environment = "dev"
+aws_region = "ap-south-1"
+project_name = "cdc-pipeline"
+bucket_prefix = "cdc-pipeline-dev"
+athena_database = "cdc_dev"
+
