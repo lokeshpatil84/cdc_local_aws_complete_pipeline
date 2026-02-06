@@ -190,7 +190,7 @@ resource "null_resource" "upload_glue_scripts" {
   provisioner "local-exec" {
     command = <<EOT
 echo "Uploading Glue scripts to S3..."
-aws s3 cp glue/ s3://${var.s3_bucket_name}/scripts/ --recursive --region ${var.aws_region}
+aws s3 cp ../glue/ s3://${var.s3_bucket_name}/scripts/ --recursive --region ${var.aws_region}
 echo "Scripts uploaded successfully!"
 EOT
 
