@@ -571,17 +571,8 @@ jobs:
           PLAN_FILE="${{ needs.terraform-plan.outputs.plan_id }}"
 
           echo "Applying plan: ${PLAN_FILE}"
-          
-          set +e
-          terraform apply -auto-approve -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} ${PLAN_FILE}
-          EXIT_CODE=$?
-          set -e
 
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "Apply failed, retrying in 10s..."
-            sleep 10
-            terraform apply -auto-approve -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} ${PLAN_FILE}
-          fi
+          terraform apply -auto-approve -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} ${PLAN_FILE}
 
       - name: Capture Outputs
         id: outputs
@@ -759,6 +750,3 @@ jobs:
           echo "- Email (SES/SendGrid)"
           echo "- PagerDuty for critical failures"
           echo "=========================================="
-
-
-
