@@ -5,6 +5,9 @@ on:
     branches: [dev, staging, prod, main]
   pull_request:
     branches: [main]
+  
+  # Allow manual trigger
+  workflow_dispatch:
 
 env:
   PYTHON_VERSION: "3.10"
