@@ -56,8 +56,7 @@ jobs:
 
   pre-check:
     runs-on: ubuntu-latest
-    # Remove ci-check dependency - handle CI logic inside pre-check
-    # This allows manual triggers (destroy, deploy) to work properly
+    
     timeout-minutes: 5
 
     outputs:
