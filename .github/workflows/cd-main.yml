@@ -1,25 +1,3 @@
-# =============================================================================
-# CD - Infrastructure and Glue Jobs
-# =============================================================================
-# TRIGGER BEHAVIOR:
-# 1. Auto-trigger (CI success via workflow_run):
-#    - Only runs TERRAFORM PLAN (plan-only mode)
-#    - NEVER auto-applies
-#    - Creates plan artifacts for review
-#
-# 2. Manual trigger (workflow_dispatch):
-#    - action=plan-only: Only plan (same as auto-trigger)
-#    - action=deploy: Plan + Apply (requires GitHub Environment approval)
-#    - action=destroy: Destroy infrastructure (blocked for prod)
-#
-# ENVIRONMENT MAPPING:
-# - dev branch → dev environment (state: cdc-pipeline-tfstate-dev)
-# - main branch → prod environment (state: cdc-pipeline-tfstate-prod)
-# - staging branch → staging environment (state: cdc-pipeline-tfstate-staging)
-#
-# STATE ISOLATION:
-# Each environment has its own S3 bucket and DynamoDB table for state locking.
-# =============================================================================
 
 on:
   workflow_run:
@@ -78,8 +56,8 @@ jobs:
 
   pre-check:
     runs-on: ubuntu-latest
-    needs: [ci-check]
-    if: always() && (needs.ci-check.result == 'success' || needs.ci-check.result == 'skipped')
+    # Remove ci-check dependency - handle CI logic inside pre-check
+    # This allows manual triggers (destroy, deploy) to work properly
     timeout-minutes: 5
 
     outputs:
@@ -90,8 +68,33 @@ jobs:
       aws_secret_key: ${{ steps.env.outputs.aws_secret_key }}
       is_manual: ${{ steps.env.outputs.is_manual }}
       drift_check: ${{ steps.env.outputs.drift_check }}
+      # ci_passed is set by either ci-check or ci-check-skipped step
+      ci_passed: ${{ steps.ci-check.outputs.ci_passed || steps['ci-check-skipped'].outputs.ci_passed || 'true' }}
 
     steps:
+      # CI Check step - runs only on workflow_run (auto-trigger)
+      - name: Check CI Status
+        id: ci-check
+        if: github.event_name == 'workflow_run'
+        run: |
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "CI workflow failed - blocking deployment"
+            echo "Workflow: ${{ github.event.workflow_run.name }}"
+            echo "Conclusion: ${{ github.event.workflow_run.conclusion }}"
+            echo "ci_passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "CI workflow passed - proceeding with deployment"
+          echo "ci_passed=true" >> $GITHUB_OUTPUT
+
+      # Skip CI check for manual triggers - set ci_passed=true
+      - name: CI Check Skipped (Manual Trigger)
+        id: ci-check-skipped
+        if: github.event_name != 'workflow_run'
+        run: |
+          echo "Manual trigger detected - skipping CI check"
+          echo "ci_passed=true" >> $GITHUB_OUTPUT
+
       - name: Determine Environment & Context
         id: env
         run: |
