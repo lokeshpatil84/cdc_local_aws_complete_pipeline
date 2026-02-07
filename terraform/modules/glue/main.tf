@@ -176,3 +176,25 @@ resource "aws_cloudwatch_log_group" "glue" {
   })
 }
 
+# =========================================================
+# Auto-upload Glue Scripts to S3
+# =========================================================
+
+resource "null_resource" "upload_glue_scripts" {
+  triggers = {
+    # Recreate when scripts change
+    cdc_script_hash  = fileexists("${path.module}/../../glue/cdc_processor.py") ? filesha256("${path.module}/../../glue/cdc_processor.py") : "none"
+    gold_script_hash = fileexists("${path.module}/../../glue/gold_processor.py") ? filesha256("${path.module}/../../glue/gold_processor.py") : "none"
+  }
+
+  provisioner "local-exec" {
+    command = <<EOT
+echo "Uploading Glue scripts to S3..."
+aws s3 cp ../glue/ s3://${var.s3_bucket_name}/scripts/ --recursive --region ${var.aws_region}
+echo "Scripts uploaded successfully!"
+EOT
+
+    working_dir = "${path.module}/../.."
+  }
+}
+

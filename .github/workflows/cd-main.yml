@@ -1,4 +1,25 @@
-name: CD - Infrastructure and Glue Jobs
+# =============================================================================
+# CD - Infrastructure and Glue Jobs
+# =============================================================================
+# TRIGGER BEHAVIOR:
+# 1. Auto-trigger (CI success via workflow_run):
+#    - Only runs TERRAFORM PLAN (plan-only mode)
+#    - NEVER auto-applies
+#    - Creates plan artifacts for review
+#
+# 2. Manual trigger (workflow_dispatch):
+#    - action=plan-only: Only plan (same as auto-trigger)
+#    - action=deploy: Plan + Apply (requires GitHub Environment approval)
+#    - action=destroy: Destroy infrastructure (blocked for prod)
+#
+# ENVIRONMENT MAPPING:
+# - dev branch → dev environment (state: cdc-pipeline-tfstate-dev)
+# - main branch → prod environment (state: cdc-pipeline-tfstate-prod)
+# - staging branch → staging environment (state: cdc-pipeline-tfstate-staging)
+#
+# STATE ISOLATION:
+# Each environment has its own S3 bucket and DynamoDB table for state locking.
+# =============================================================================
 
 on:
   workflow_run:
@@ -389,6 +410,7 @@ jobs:
             -out=${PLAN_ID} \
             -var="environment=${ENV}" \
             -var="project_name=${{ env.PROJECT_NAME }}" \
+            -var="public_key=${{ secrets.SSH_PUBLIC_KEY }}" \
             -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} \
             -detailed-exitcode 2>&1 | tee plan_raw.log
 
@@ -487,11 +509,13 @@ jobs:
   terraform-apply:
     needs: [terraform-plan, pre-check, terraform-bootstrap]
     runs-on: ubuntu-latest
+    # CRITICAL: Only apply on MANUAL workflow_dispatch with action=deploy
+    # Auto-trigger (workflow_run) is PLAN-ONLY, never auto-apply
     if: |
       needs.terraform-plan.outputs.has_changes == 'true' &&
       needs.pre-check.outputs.drift_check != 'true' &&
-      (github.event_name == 'workflow_run' ||
-       github.event.inputs.action == 'deploy')
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.action == 'deploy'
     timeout-minutes: 45
 
     environment:
@@ -570,17 +594,8 @@ jobs:
           PLAN_FILE="${{ needs.terraform-plan.outputs.plan_id }}"
 
           echo "Applying plan: ${PLAN_FILE}"
-          
-          set +e
-          terraform apply -auto-approve -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} ${PLAN_FILE}
-          EXIT_CODE=$?
-          set -e
 
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "Apply failed, retrying in 10s..."
-            sleep 10
-            terraform apply -auto-approve -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} ${PLAN_FILE}
-          fi
+          terraform apply -auto-approve -lock-timeout=${{ env.TF_LOCK_TIMEOUT }} ${PLAN_FILE}
 
       - name: Capture Outputs
         id: outputs
@@ -720,7 +735,7 @@ jobs:
           exit 1
 
   notify:
-    needs: [terraform-apply, terraform-plan, pre-check]
+    needs: [terraform-plan, pre-check]
     if: always() && needs.pre-check.result == 'success'
     runs-on: ubuntu-latest
 
@@ -728,36 +743,59 @@ jobs:
       - name: Determine Status
         id: status
         run: |
-          if [ "${{ needs.terraform-apply.result }}" = "success" ]; then
+          # Check terraform-apply result (may be skipped if manual trigger not used)
+          APPLY_RESULT="${{ needs.terraform-apply.result }}"
+          PLAN_RESULT="${{ needs.terraform-plan.result }}"
+          HAS_CHANGES="${{ needs.terraform-plan.outputs.has_changes }}"
+          DRIFT_DETECTED="${{ needs.terraform-plan.outputs.drift_detected }}"
+          
+          if [ "$APPLY_RESULT" = "success" ]; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "message=Deployment completed successfully" >> $GITHUB_OUTPUT
-          elif [ "${{ needs.terraform-apply.result }}" = "failure" ]; then
+            echo "message=Deployment applied successfully" >> $GITHUB_OUTPUT
+          elif [ "$APPLY_RESULT" = "failure" ]; then
             echo "status=failure" >> $GITHUB_OUTPUT
             echo "message=Deployment failed" >> $GITHUB_OUTPUT
-          elif [ "${{ needs.terraform-plan.outputs.drift_detected }}" = "true" ]; then
+          elif [ "$DRIFT_DETECTED" = "true" ]; then
             echo "status=drift" >> $GITHUB_OUTPUT
             echo "message=Infrastructure drift detected" >> $GITHUB_OUTPUT
+          elif [ "$PLAN_RESULT" = "skipped" ]; then
+            echo "status=skipped" >> $GITHUB_OUTPUT
+            echo "message=Plan skipped" >> $GITHUB_OUTPUT
+          elif [ "$HAS_CHANGES" = "true" ]; then
+            echo "status=pending" >> $GITHUB_OUTPUT
+            echo "message=Plan created - manual apply required" >> $GITHUB_OUTPUT
+          elif [ "$PLAN_RESULT" = "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "message=No changes detected - infrastructure up to date" >> $GITHUB_OUTPUT
           else
             echo "status=info" >> $GITHUB_OUTPUT
-            echo "message=Plan completed" >> $GITHUB_OUTPUT
+            echo "message=Workflow completed" >> $GITHUB_OUTPUT
           fi
 
       - name: Send Notification
         run: |
           echo "=========================================="
-          echo "Notification"
+          echo "CD Workflow Notification"
           echo "=========================================="
           echo "Status: ${{ steps.status.outputs.status }}"
           echo "Message: ${{ steps.status.outputs.message }}"
           echo "Environment: ${{ needs.pre-check.outputs.env }}"
+          echo "Trigger: ${{ github.event_name }}"
           echo "Run ID: ${{ github.run_id }}"
           echo ""
-          echo "Integrate with your notification service:"
-          echo "- Slack webhook"
-          echo "- Microsoft Teams"
-          echo "- Email (SES/SendGrid)"
-          echo "- PagerDuty for critical failures"
+          
+          # Provide guidance based on trigger type
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "This was an AUTO-TRIGGER (CI success)"
+            echo "Only plan was generated - no changes applied"
+            echo "To apply: Use workflow_dispatch → select deploy"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "This was a MANUAL TRIGGER"
+            if [ "${{ needs.terraform-apply.result }}" = "success" ]; then
+              echo "Changes have been APPLIED"
+            elif [ "${{ needs.terraform-plan.outputs.has_changes }}" = "true" ]; then
+              echo "Plan created - apply action was selected"
+              echo "Waiting for environment approval..."
+            fi
+          fi
           echo "=========================================="
-
-
-

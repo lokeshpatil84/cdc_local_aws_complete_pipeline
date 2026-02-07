@@ -30,6 +30,15 @@ module "vpc" {
   tags               = var.tags
 }
 
+resource "aws_key_pair" "kafka" {
+  key_name   = var.key_name
+  public_key = var.public_key
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 module "s3" {
   source                    = "./modules/s3"
   project_name              = var.project_name
@@ -58,9 +67,15 @@ module "kafka" {
 }
 
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name        = "${var.project_name}-${var.environment}-db-credentials"
-  description = "Database credentials for CDC pipeline"
-  tags        = var.tags
+  name                    = "${var.project_name}-${var.environment}-db-credentials"
+  description             = "Database credentials for CDC pipeline"
+  recovery_window_in_days = 0
+  tags                    = var.tags
+
+  lifecycle {
+    ignore_changes        = [name]
+    create_before_destroy = true
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "db_credentials" {
@@ -192,10 +207,18 @@ output "kafka_bootstrap_servers_internal" {
 }
 output "kafka_security_group_id" { value = module.kafka.security_group_id }
 output "rds_endpoint" { value = aws_db_instance.postgres.endpoint }
+output "database_endpoint" {
+  value       = aws_db_instance.postgres.endpoint
+  description = "Database endpoint (alias for rds_endpoint)"
+}
 output "debezium_connect_url" {
   value = "http://${module.ecs.alb_dns_name}:8083"
 }
 output "airflow_url" { value = "http://${module.airflow.alb_dns_name}" }
+output "service_url" {
+  value       = "Airflow: http://${module.airflow.alb_dns_name}\nDebezium: http://${module.ecs.alb_dns_name}:8083"
+  description = "Combined service URLs for deployed infrastructure"
+}
 output "glue_role_arn" { value = module.glue.role_arn }
 output "db_secret_arn" { value = aws_secretsmanager_secret.db_credentials.arn }
 output "sns_topic_arn" { value = aws_sns_topic.alerts.arn }

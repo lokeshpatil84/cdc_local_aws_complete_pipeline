@@ -16,6 +16,87 @@ PostgreSQL -> Debezium -> Kafka -> Glue (Bronze/Silver) -> S3/Iceberg -> Athena
 5. Data stored in S3 using Apache Iceberg format
 6. Athena used for querying
 
+## CI/CD Workflow
+
+This project uses GitHub Actions for automated CI/CD:
+
+### Workflow Files
+- `.github/workflows/01-ci.yml` - Code quality checks (Python, Terraform, Docker)
+- `.github/workflows/cd-main.yml` - Infrastructure deployment (Terraform)
+
+### Deployment Modes
+
+#### 1. Auto-trigger (Plan-Only)
+Push to `dev` or `main` branch triggers:
+1. CI runs (code quality checks)
+2. CD auto-triggers on CI success
+3. **Only generates Terraform plan** (no auto-apply)
+4. Plan artifacts available for review
+
+```bash
+# Push to dev - auto plan for dev environment
+git checkout dev
+git push origin dev
+
+# Push to main - auto plan for prod environment  
+git checkout main
+git push origin main
+```
+
+#### 2. Manual Apply
+Manual workflow dispatch required to apply changes:
+
+1. Go to **Actions** → **CD - Infrastructure and Glue Jobs**
+2. Click **Run workflow**
+3. Select:
+   - **Environment**: `dev`, `staging`, or `prod`
+   - **Action**: `deploy` (for plan+apply) or `plan-only` (just plan)
+   - **Reason**: Required for production
+4. Review the generated plan
+5. Approve via GitHub Environment (required for `prod`)
+6. Changes are applied
+
+### Environment Mapping
+
+| Branch  | Environment | State Bucket                           | Lock Table                          |
+|---------|-------------|----------------------------------------|-------------------------------------|
+| dev     | dev         | cdc-pipeline-tfstate-dev              | cdc-pipeline-terraform-lock-dev     |
+| staging | staging     | cdc-pipeline-tfstate-staging          | cdc-pipeline-terraform-lock-staging |
+| main    | prod        | cdc-pipeline-tfstate-prod             | cdc-pipeline-terraform-lock-prod    |
+
+### State Isolation
+Each environment has **isolated Terraform state**:
+- Separate S3 bucket for state storage
+- Separate DynamoDB table for state locking
+- Prevents cross-environment contamination
+
+### GitHub Secrets Required
+
+Configure these in GitHub repository settings:
+
+| Secret Name | Description |
+|------------|-------------|
+| `AWS_DEV_ACCESS_KEY_ID` | AWS credentials for dev environment |
+| `AWS_DEV_SECRET_ACCESS_KEY` | AWS secret for dev |
+| `AWS_STAGING_ACCESS_KEY_ID` | AWS credentials for staging |
+| `AWS_STAGING_SECRET_ACCESS_KEY` | AWS secret for staging |
+| `AWS_PROD_ACCESS_KEY_ID` | AWS credentials for prod |
+| `AWS_PROD_SECRET_ACCESS_KEY` | AWS secret for prod |
+| `SSH_PUBLIC_KEY` | SSH public key for Kafka EC2 access |
+
+### GitHub Environments
+
+Create these environments in GitHub settings for approval gates:
+
+1. **dev** - Optional approval
+2. **staging** - Optional approval  
+3. **prod** - Required approval (protect production changes)
+
+### Scheduled Drift Detection
+Nightly at 6:00 UTC:
+- Runs plan against production
+- Alerts if infrastructure drift detected
+
 ## Project Structure
 
 ```
