@@ -2,15 +2,15 @@
 # Terraform Backend Configuration
 # ============================================================
 # This file configures the S3 backend for state storage
-# 
+#
 # IMPORTANT: Before running terraform init, ensure the S3 bucket
 # and DynamoDB table are created using terraform-bootstrap
 # (see terraform-bootstrap/ directory)
 #
 # The bucket and table names are overridden via:
-# 1. -backend-config flags (recommended for CI/CD)
-# 2. backend.hcl file (for local development)
-# 3. Environment variables (TF_VAR_*)
+#  1. -backend-config flags (recommended for CI/CD)
+#  2. backend.hcl file (for local development)
+#  3. Environment variables (TF_VAR_*)
 #
 # ============================================================
 
@@ -26,4 +26,27 @@ terraform {
     dynamodb_table = "cdc-pipeline-terraform-lock-dev" # Override via -backend-config="dynamodb_table=your-table"
   }
 }
+
+# =============================================================================
+# ENVIRONMENT-SPECIFIC BACKEND CONFIGURATIONS
+# =============================================================================
+# These are referenced in CI/CD via -backend-config flags:
+#
+# Development:
+#   -bucket=cdc-pipeline-tfstate-dev
+#   -dynamodb_table=cdc-pipeline-terraform-lock-dev
+#
+# Staging:
+#   -bucket=cdc-pipeline-tfstate-staging
+#   -dynamodb_table=cdc-pipeline-terraform-lock-staging
+#
+# Production:
+#   -bucket=cdc-pipeline-tfstate-prod
+#   -dynamodb_table=cdc-pipeline-terraform-lock-prod
+#
+# IMPORTANT: Each environment has ISOLATED state storage for:
+#  1. State isolation (prevents dev changes affecting prod)
+#  2. Lock isolation (prevents concurrent operations conflicts)
+#  3. Audit trail (each environment has its own state history)
+# =============================================================================
 

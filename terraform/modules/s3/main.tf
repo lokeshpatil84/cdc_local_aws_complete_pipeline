@@ -6,7 +6,7 @@ resource "aws_s3_bucket" "data_lake" {
   bucket = "${var.project_name}-${var.environment}-data-lake"
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 
   tags = merge(var.tags, {
@@ -70,7 +70,7 @@ resource "aws_s3_bucket" "glue_scripts" {
   bucket = "${var.project_name}-${var.environment}-glue-scripts"
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 
   tags = merge(var.tags, {
