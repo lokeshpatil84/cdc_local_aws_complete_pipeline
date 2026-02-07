@@ -1,0 +1,301 @@
+name: CI - Validation
+
+on:
+  push:
+    branches: [dev, staging, prod, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.10"
+  TERRAFORM_VERSION: "1.10.0"
+  TFLINT_VERSION: "0.50.0"
+
+jobs:
+  python-quality:
+    name: Python Lint & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install flake8 pytest black isort pyyaml
+
+      - name: Python Syntax Check
+        run: |
+          find . -name "*.py" -not -path "./.venv/*" -not -path "./env/*" -print0 | \
+            xargs -0 -I {} python -m py_compile {}
+
+      - name: Black Format Check
+        run: |
+          black --check --diff .
+
+      - name: Isort Check
+        run: |
+          isort --check-only --diff .
+
+      - name: Flake8 Lint (Critical Errors)
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Flake8 Lint (Full Report)
+        run: |
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run Pytest
+        run: |
+          if [ -d tests ]; then
+            pytest -v --tb=short
+          else
+            echo "No tests directory found - skipping pytest"
+          fi
+
+  terraform-quality:
+    name: Terraform Lint & Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - name: Terraform Format Check
+        run: |
+          if [ -d terraform ]; then
+            echo "Checking Terraform formatting..."
+            terraform -chdir=terraform fmt -check -recursive
+          else
+            echo "No terraform directory found - skipping format check"
+          fi
+
+      - name: Terraform Validate
+        run: |
+          if [ -d terraform ]; then
+            echo "Initializing Terraform (backendless)..."
+            terraform -chdir=terraform init -backend=false
+            echo "Validating Terraform configuration..."
+            terraform -chdir=terraform validate
+          else
+            echo "No terraform directory found - skipping validation"
+          fi
+
+      - name: TFLint (Terraform Linter)
+        run: |
+          if [ -d terraform ]; then
+            echo "Initializing TFLint..."
+            tflint --init
+            echo "Running TFLint..."
+            tflint --chdir=terraform --format compact
+          else
+            echo "No terraform directory found - skipping TFLint"
+          fi
+
+      - name: Trivy Security Scan (Terraform)
+        uses: aquasecurity/trivy-action@0.24.0
+        if: hashFiles('terraform/**/*.tf') != ''
+        with:
+          scan-type: 'config'
+          scan-ref: './terraform'
+          format: 'sarif'
+          output: 'trivy-terraform-results.sarif'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Checkov Security Scan (Terraform)
+        uses: bridgecrewio/checkov-action@v12
+        if: hashFiles('terraform/**/*.tf') != ''
+        with:
+          directory: ./terraform
+          framework: terraform
+          output_format: cli
+          output_file_path: console
+          soft_fail: true
+          download_external_modules: true
+
+  docker-quality:
+    name: Docker Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose YAML
+        run: |
+          if [ -f docker-compose.yml ]; then
+            echo "Validating docker-compose.yml syntax..."
+            python -c "import yaml; data=yaml.safe_load(open('docker-compose.yml')); print('YAML syntax valid'); print('Services:', len(data.get('services',{})))"
+          else
+            echo "No docker-compose.yml found - skipping YAML validation"
+          fi
+
+      - name: Docker Compose Config Check
+        run: |
+          if [ -f docker-compose.yml ]; then
+            echo "Checking Docker Compose configuration..."
+            docker compose config > /dev/null
+            echo "Docker Compose config is valid"
+          else
+            echo "No docker-compose.yml found - skipping config check"
+          fi
+
+      - name: Hadolint (Dockerfile Linter)
+        uses: hadolint/hadolint-action@v3.1.0
+        if: hashFiles('**/Dockerfile') != ''
+        with:
+          dockerfile: "Dockerfile"
+          recursive: true
+          failure-threshold: error
+
+  project-structure:
+    name: Required Files Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Validate Required Files
+        run: |
+          echo "Checking required project files..."
+          echo "=========================================="
+
+          declare -A required_files=(
+            ["requirements.txt"]="Python dependencies"
+            ["docker-compose.yml"]="Docker orchestration"
+            ["terraform/main.tf"]="Terraform main configuration"
+            ["glue/cdc_processor.py"]="AWS Glue CDC processor"
+            ["sql/init.sql"]="Database initialization"
+          )
+
+          missing_files=()
+          found_count=0
+
+          for file in "${!required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Missing: $file (${required_files[$file]})"
+              missing_files+=("$file")
+            else
+              echo "Found: $file"
+              ((found_count++))
+            fi
+          done
+
+          echo "=========================================="
+
+          if [ ${#missing_files[@]} -gt 0 ]; then
+            echo ""
+            echo "Error: ${#missing_files[@]} required file(s) missing"
+            exit 1
+          fi
+
+          echo ""
+          echo "All required files present ($found_count/${#required_files[@]})"
+
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Yamllint
+        run: |
+          if [ -f .yamllint ] || [ -f .yamllint.yml ]; then
+            pip install yamllint
+            yamllint .
+          else
+            echo "No yamllint config found - skipping YAML linting"
+          fi
+
+  ci-status:
+    name: CI Status Check
+    runs-on: ubuntu-latest
+    needs: [python-quality, terraform-quality, docker-quality, project-structure, yaml-lint]
+    if: always()
+    timeout-minutes: 5
+
+    steps:
+      - name: Check All CI Jobs Status
+        run: |
+          echo "=========================================="
+          echo "CI Validation Summary"
+          echo "=========================================="
+
+          PYTHON_RESULT="${{ needs.python-quality.result }}"
+          TF_RESULT="${{ needs.terraform-quality.result }}"
+          DOCKER_RESULT="${{ needs.docker-quality.result }}"
+          STRUCTURE_RESULT="${{ needs.project-structure.result }}"
+          YAML_RESULT="${{ needs.yaml-lint.result }}"
+
+          echo "Python Quality: $PYTHON_RESULT"
+          echo "Terraform Quality: $TF_RESULT"
+          echo "Docker Quality: $DOCKER_RESULT"
+          echo "Project Structure: $STRUCTURE_RESULT"
+          echo "YAML Lint: $YAML_RESULT"
+
+          FAILED=false
+
+          if [ "$PYTHON_RESULT" == "failure" ]; then
+            echo "Python quality checks failed"
+            FAILED=true
+          fi
+
+          if [ "$TF_RESULT" == "failure" ]; then
+            echo "Terraform quality checks failed"
+            FAILED=true
+          fi
+
+          if [ "$DOCKER_RESULT" == "failure" ]; then
+            echo "Docker quality checks failed"
+            FAILED=true
+          fi
+
+          if [ "$STRUCTURE_RESULT" == "failure" ]; then
+            echo "Project structure validation failed"
+            FAILED=true
+          fi
+
+          if [ "$YAML_RESULT" == "failure" ]; then
+            echo "YAML linting failed"
+            FAILED=true
+          fi
+
+          echo "=========================================="
+
+          if [ "$FAILED" == "true" ]; then
+            echo "CI validation failed - blocking deployment pipeline"
+            exit 1
+          fi
+
+          echo "All CI checks passed - ready for Terraform Plan"
+

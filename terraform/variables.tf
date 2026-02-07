@@ -1,3 +1,10 @@
+# ============================================================
+# Terraform Variables
+# ============================================================
+# This file contains all variable definitions for the infrastructure.
+# Override values using terraform.tfvars files or -var flags.
+# ============================================================
+
 variable "project_name" {
   type    = string
   default = "cdc-pipeline"
